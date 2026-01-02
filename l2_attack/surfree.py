@@ -96,9 +96,13 @@ class SurFree():
         self.labels = labels
         self._model = model
 
+        print("Checkpoint1")
+
         # Get Starting Point
         self.best_advs = attack.get_init_with_noise(model, X, labels) if starting_points is None else starting_points
         self.X = X
+
+        print("Checkpoint2")
 
         # Check if X are already adversarials.
         self._images_finished = model(X).argmax(1) != labels
@@ -113,6 +117,8 @@ class SurFree():
 
         # Load Basis
         self._basis = Basis(self.X, **kwargs["basis_params"]) if "basis_params" in kwargs else Basis(self.X)
+
+        print("Checkpoint3")
 
         for step_i in range(self._steps):
             print("Step:", step_i)
