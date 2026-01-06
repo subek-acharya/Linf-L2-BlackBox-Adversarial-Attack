@@ -2,10 +2,10 @@ import math
 import random
 import numpy as np
 import torch
-from .surfee_utils import attack
+from .surfree_utils import attack
 
-from .surfee_utils import dct
-from .surfee_utils import utils
+from .surfree_utils import dct
+from .surfree_utils import utils
 
 
 def distance(a, b):

@@ -4,8 +4,9 @@ from torch.utils.data import TensorDataset, DataLoader
 import numpy as np
 
 from model_architecture import ResNet, cait, VGG
-import linf_attack
-import l2_attack
+import rays_attack
+import surfree_attack
+import square_attack
 import utils
 
 def main():
@@ -97,7 +98,7 @@ def main():
     print("Voter Dataset Val Loader Clean Acc:", cleanAcc)
 
     # Get correctly classified, classwise balanced samples to do the attack
-    totalSamplesRequired = 100
+    totalSamplesRequired = 1000
     correctLoader = utils.GetCorrectlyIdentifiedSamplesBalanced(model, totalSamplesRequired, valLoader, numClasses)
 
     # Check the number of samples in the correctLoader
@@ -111,56 +112,71 @@ def main():
     # epsilonMax = 1
     # queryLimit = 1000
 
-    #-------------- Linf Attack - RaySAttack ------------
-    # advLoaderRayS = linf_attack.RaySAttack(model, epsilonMax, queryLimit, correctLoader)
+    # -------------- Linf Attack - RaySAttack ------------
+    # advLoaderRayS = rays_attack.RaySAttack(model, epsilonMax, queryLimit, correctLoader)
     # advAcc = utils.validateD(advLoaderRayS, model, device)
     # print("RayS black-box robustness:", advAcc)
 
-    #----------------------- L2 Attack - Surfee Attack ---------------
+    #----------------------- L2 Attack - Surfree Attack ---------------
     
-    # Configuration for SurFree attack
-    surfree_config = {
-        "init": {
-            "steps": 100,                       # Number of optimization steps
-            "max_queries": 500,                # Maximum queries per image
-            "BS_gamma": 0.01,                   # Binary search precision threshold
-            "BS_max_iteration": 7,              # Max binary search iterations
-            "theta_max": 30,                    # Max angle for direction search (degrees)
-            "n_ortho": 100,                     # Number of orthogonal directions to maintain
-            "rho": 0.95,                        # Angle adjustment factor
-            "T": 1,                             # Number of evaluations per direction
-            "with_alpha_line_search": True,     # Enable binary search on theta
-            "with_distance_line_search": False, # Enable binary search on distance
-            "with_interpolation": False,        # Enable interpolation
-            "final_line_search": True,          # Perform final line search
-            "quantification": True,             # Quantify to valid pixel values
-            "clip": True                        # Clip values to [0, 1]
-        },
-        "run": {
-            "basis_params": {
-                "basis_type": "random",            # Type of basis ("dct" or "random")
-                "dct_type": "full",             # DCT type ("full" or "8x8")
-                "frequence_range": (0, 0.5),    # Frequency range for DCT
-                "beta": 0.001,                  # Noise factor for DCT basis
-                "tanh_gamma": 1,                # Gamma for tanh function in DCT
-                "random_noise": "normal"        # Noise type ("normal" or "uniform")
-            }
-        }
-    }
+    # # Configuration for SurFree attack
+    # surfree_config = {
+    #     "init": {
+    #         "steps": 100,                       # Number of optimization steps
+    #         "max_queries": 500,                # Maximum queries per image
+    #         "BS_gamma": 0.01,                   # Binary search precision threshold
+    #         "BS_max_iteration": 7,              # Max binary search iterations
+    #         "theta_max": 30,                    # Max angle for direction search (degrees)
+    #         "n_ortho": 100,                     # Number of orthogonal directions to maintain
+    #         "rho": 0.95,                        # Angle adjustment factor
+    #         "T": 1,                             # Number of evaluations per direction
+    #         "with_alpha_line_search": True,     # Enable binary search on theta
+    #         "with_distance_line_search": False, # Enable binary search on distance
+    #         "with_interpolation": False,        # Enable interpolation
+    #         "final_line_search": True,          # Perform final line search
+    #         "quantification": True,             # Quantify to valid pixel values
+    #         "clip": True                        # Clip values to [0, 1]
+    #     },
+    #     "run": {
+    #         "basis_params": {
+    #             "basis_type": "random",            # Type of basis ("dct" or "random")
+    #             "dct_type": "full",             # DCT type ("full" or "8x8")
+    #             "frequence_range": (0, 0.5),    # Frequency range for DCT
+    #             "beta": 0.001,                  # Noise factor for DCT basis
+    #             "tanh_gamma": 1,                # Gamma for tanh function in DCT
+    #             "random_noise": "normal"        # Noise type ("normal" or "uniform")
+    #         }
+    #     }
+    # }
     
-    # # Run SurFree attack
-    advLoader = l2_attack.SurFree_AttackWrapper(
+    # # # Run SurFree attack
+    # advLoader = surfree_attack.SurFree_AttackWrapper(
+    #     model=model,
+    #     device=device,
+    #     dataLoader=correctLoader,
+    #     config=surfree_config
+    # )
+    
+    # # # Calculate adversarial accuracy
+    # advAcc = utils.validateD(advLoader, model, device)
+    # print("\n" + "=" * 60)
+    # print(f"SurFree Attack Results:")
+    # print(f"  - Adversarial Accuracy: {advAcc}")
+
+    # -------------- Square Attack L-inf ------------------
+    advLoaderSquareLinf = square_attack.SquareAttackLinf_Wrapper(
         model=model,
         device=device,
         dataLoader=correctLoader,
-        config=surfree_config
+        eps=0.5,
+        n_iters=2000,
+        p_init=0.6,
+        n_classes=numClasses,
+        targeted=False,
     )
     
-    # # Calculate adversarial accuracy
-    advAcc = utils.validateD(advLoader, model, device)
-    print("\n" + "=" * 60)
-    print(f"SurFree Attack Results:")
-    print(f"  - Adversarial Accuracy: {advAcc}")
+    advAccSquareLinf = utils.validateD(advLoaderSquareLinf, model, device)
+    print("Square Attack Linf black-box robustness:", advAccSquareLinf)
 
 if __name__ == '__main__':
     main()

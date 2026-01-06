@@ -34,6 +34,16 @@ def TensorToDataLoader(xData, yData, transforms= None, batchSize=None, randomize
         dataLoader = torch.utils.data.DataLoader(dataset=dataset,  batch_size=batchSize, sampler=train_sampler, shuffle=False)
     return dataLoader
 
+def TensorToNumpy(x_tensor, y_tensor):
+    x_numpy = x_tensor.cpu().numpy()
+    y_numpy = y_tensor.cpu().numpy().astype(np.int64)
+    return x_numpy, y_numpy
+
+def NumpyToTensor(x_numpy, y_numpy):
+    x_tensor = torch.from_numpy(x_numpy).float()
+    y_tensor = torch.from_numpy(y_numpy).long()  # long is int64
+    return x_tensor, y_tensor
+
 
 # Find the actual min and max pixel values in the dataset
 def GetDataBounds(dataLoader, device):
