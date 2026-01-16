@@ -1,15 +1,25 @@
+# coding:utf-8
+"""
+ADBA (Approximation Decision Boundary Approach) Attack Implementation
+Adapted from: https://github.com/BUPTAIOC/ADBA
+
+Paper: ADBA: Approximation Decision Boundary Approach for Black-Box Adversarial Attacks
+       (AAAI 2025)
+"""
+
 import torch
 import numpy as np
 import copy
 import random
 import sys
-from scipy.stats import norm
+
+from . import datatools
 
 
-# ==================== Helper Classes ====================
+# ==================== Classes ====================
 
 class Block:
-    """Represent blocks of a picture for hierarchical search."""
+    """Represent blocks of a picture."""
     
     def __init__(self, x1, x2):
         self.x1 = x1
@@ -17,14 +27,13 @@ class Block:
         self.width = x2 - x1 + 1
 
     def cut_block(self, subnum=2):
-        """Cut block into subnum sub-blocks."""
         bs = []
         for i in range(subnum):
             bs.append(copy.deepcopy(self))
  
         for i in range(subnum):
-            line1 = self.x1 + (i * (self.x2 - self.x1)) // subnum
-            line2 = self.x1 + ((i + 1) * (self.x2 - self.x1)) // subnum
+            line1 = self.x1 + (i * (self.x2 - self.x1)) // subnum  # d1
+            line2 = self.x1 + ((i + 1) * (self.x2 - self.x1)) // subnum  # d2
             bs[i].x1 = line1
             if i > 0:
                 bs[i].x1 = line1 + 1
@@ -33,308 +42,271 @@ class Block:
         return bs
 
 
-class PerturbationDirection:
-    """Represent a perturbation direction vector."""
+class V:
+    """Represent a perturbation direction."""
     
-    def __init__(self, size_channel, size_x, size_y, init_value, device):
+    def __init__(self, size_channel, size_x, size_y, v, device):
         self.size_channel = size_channel
         self.size_x = size_x
         self.size_y = size_y
         self.device = device
         self.pixnum = size_x * size_y * size_channel
-        self.adv_v = [init_value for _ in range(self.pixnum)]
+        self.adv_v = [v for _ in range(self.pixnum)]
+        self.score = 1.0
         self.Rmax = 1.0
         self.Rmin = 0.0
 
-        # Initialize with random {-1, +1} if init_value is 0
-        if init_value == 0:
+        list_temp = [-1, 1]
+        if v == 0:
             for x in range(len(self.adv_v)):
-                self.adv_v[x] = random.choice([-1, 1])
+                self.adv_v[x] = random.choice(list_temp)
     
-    def reverse_block(self, block):
-        """Reverse signs of perturbation in a block."""
+    def reverse_v(self, block):
+        """Reverse blocks of a perturbation direction to generate new directions."""
         for x in range(block.x1, block.x2 + 1):
             self.adv_v[x] *= -1
 
-    def to_tensor(self):
+    def advv_to_tensor(self):
         """Convert perturbation direction to tensor."""
         three_d_list = [
             [[self.adv_v[channel * self.size_x * self.size_y + x * self.size_y + y]
               for y in range(self.size_y)]
              for x in range(self.size_x)]
             for channel in range(self.size_channel)]
-        
-        perturbation = torch.tensor(np.array(three_d_list), dtype=torch.float32)
+        aim_np = np.array(three_d_list)
+        perturbation = torch.tensor(aim_np, dtype=torch.float32)
         return perturbation.to(self.device)
 
 
-class IterationState:
-    """Manage iteration state for ADBA attack."""
+class Iter:
+    """Represent Iterations."""
     
-    def __init__(self, init_direction, offspring_n, device):
-        self.offspring_n = offspring_n
+    def __init__(self, init_vbest, offspringN, device, iter_n=1):
+        self.offspringN = offspringN
         self.device = device
-        self.iter_n = 1
-        self.offspring_directions = []
-        self.chosen_direction = -1
-        self.best_direction = copy.deepcopy(init_direction)
-        
-        for i in range(offspring_n):
-            self.offspring_directions.append(copy.deepcopy(init_direction))
-            self.offspring_directions[i].Rmax = 1.0
-            self.offspring_directions[i].Rmin = 0.0
+        self.iter_n = iter_n
+        self.offspringVs = []  # d1 d2
+        self.chosen_v = -1  # chose which d
+        self.old_vbest = copy.deepcopy(init_vbest)  # dbest
+        for i in range(offspringN):
+            self.offspringVs.append(copy.deepcopy(init_vbest))
+            self.offspringVs[i].Rmax, self.offspringVs[i].Rmin = 1.0, 0.0
     
-    def mutation(self, model, original_image, label, target_radius, blocks, binary_mode):
-        """Create a new generation through mutation."""
-        query_count = 0
-        
-        # Reverse blocks in offspring directions
-        for vi in range(self.offspring_n):
-            self.offspring_directions[vi].reverse_block(blocks[vi])
-            self.offspring_directions[vi].Rmax = self.best_direction.Rmax
-            self.offspring_directions[vi].Rmin = 0.0
+    def mutation(self, model, original_image, label, aim_r, tolerance_binary_iters, blocks, binaryM):
+        """Create a new generation."""
+        query = 0
+        for vi in range(self.offspringN):
+            self.offspringVs[vi].reverse_v(blocks[vi])
+            self.offspringVs[vi].Rmax, self.offspringVs[vi].Rmin = self.old_vbest.Rmax, 0.0
 
-        # Compare directions using ADB
-        query_count += self.compare_directions_using_adb(
-            model, original_image, label, target_radius, binary_mode
-        )
+        query = query + self.compare_directions_usingADB(
+            model, original_image, label, aim_r, tolerance_binary_iters, binaryM)
 
-        # Restore offspring directions
-        for vi in range(self.offspring_n):
-            self.offspring_directions[vi].reverse_block(blocks[vi])
-        
-        # Update best direction if a better one was found
-        if self.chosen_direction >= 0:
-            self.best_direction.reverse_block(blocks[self.chosen_direction])
-            self.best_direction.Rmax = self.offspring_directions[self.chosen_direction].Rmax
-            self.best_direction.Rmin = self.offspring_directions[self.chosen_direction].Rmin
-            
-            for vi in range(self.offspring_n):
-                self.offspring_directions[vi].reverse_block(blocks[self.chosen_direction])
-                self.offspring_directions[vi].Rmax = self.offspring_directions[self.chosen_direction].Rmax
-                self.offspring_directions[vi].Rmin = self.offspring_directions[self.chosen_direction].Rmin
-        
-        self.iter_n += 1
-        return query_count
+        for vi in range(self.offspringN):  # initialize directions
+            self.offspringVs[vi].reverse_v(blocks[vi])
+        if self.chosen_v >= 0:
+            self.old_vbest.reverse_v(blocks[self.chosen_v])
+            self.old_vbest.Rmax, self.old_vbest.Rmin = (
+                self.offspringVs[self.chosen_v].Rmax, self.offspringVs[self.chosen_v].Rmin)
+            for vi in range(self.offspringN):
+                self.offspringVs[vi].reverse_v(blocks[self.chosen_v])
+                self.offspringVs[vi].Rmax, self.offspringVs[vi].Rmin = (
+                    self.offspringVs[self.chosen_v].Rmax, self.offspringVs[self.chosen_v].Rmin)
+        self.iter_n = self.iter_n + 1
+        return query
     
-    def compare_directions_using_adb(self, model, original_image, label, target_radius, binary_mode):
-        """Algorithm 2: Compare Directions Using Approximate Decision Boundary."""
-        perturbations = []
-        perturbed_images = []
-        predictions = []
-        query_count = 0
-        successful_directions = []
-        self.chosen_direction = -1
+    def compare_directions_usingADB(self, model, original_image, label, aim_r, maxIters, binaryM):
+        """Algorithm 2: Compare Directions Using ADB."""
+        perturbations = []  # d1 d2
+        perturbed_images = []  # = x+ADB*d
+        predicted = []  # = F(x+ADB*d)
+        query = 0
+        succV = []
+        self.chosen_v = -1
         
-        # Initialize and test all offspring directions at current Rmax
-        for i in range(len(self.offspring_directions)):
-            perturbations.append(self.offspring_directions[i].to_tensor())
-            perturbed_image = torch.clamp(
-                original_image + self.best_direction.Rmax * perturbations[i], 
-                0.0, 1.0
-            )
-            perturbed_images.append(perturbed_image)
+        # Initialize directions
+        for i in range(len(self.offspringVs)):
+            perturbations.append(self.offspringVs[i].advv_to_tensor())
+            perturbed_images.append(torch.clamp(
+                original_image + self.old_vbest.Rmax * perturbations[i], 0.0, 1.0))
             
             with torch.no_grad():
-                pred = model(perturbed_image).argmax(1)
-            predictions.append(pred.cpu())
-            query_count += 1
+                pred = model(perturbed_images[i]).argmax(1)
+            predicted.append(pred.cpu())
+            query = query + 1
             
-            if pred.item() != label.item():
-                successful_directions.append(i)
-                self.offspring_directions[i].Rmax = self.best_direction.Rmax
-                self.chosen_direction = i
+            if predicted[i].item() != label.item():
+                succV.append(i)
+                self.offspringVs[i].Rmax = self.old_vbest.Rmax
+                self.chosen_v = i
             else:
-                self.offspring_directions[i].Rmin = self.best_direction.Rmax
+                self.offspringVs[i].Rmin = self.old_vbest.Rmax
 
-        # Return early if no or only one successful direction
-        if len(successful_directions) == 0:
-            self.chosen_direction = -1
-            return query_count
-        elif len(successful_directions) == 1:
-            self.chosen_direction = successful_directions[0]
-            return query_count
+        if len(succV) == 0:
+            self.chosen_v = -1
+            return query
+        elif len(succV) == 1:
+            self.chosen_v = succV[0]
+            return query
 
-        # Binary search to compare multiple successful directions
-        low, high = 0, self.best_direction.Rmax
-        
-        while high - low >= 1e-5:
-            # Get next ADB using the chosen method
-            adb = get_next_adb(low, high, target_radius, self.best_direction.Rmax, binary_mode)
-            
-            temp_successful = copy.deepcopy(successful_directions)
+        low, high = 0, self.old_vbest.Rmax
+        while high - low >= 1e-5:  # comparison loop
+            ADB = datatools.next_ADB(low, high, aim_r, self.old_vbest.Rmax, binaryM)  # guess next ADB using rho(r)
+            succVtemp = copy.deepcopy(succV)
             vi = 0
-            
-            while vi < len(temp_successful):
-                perturbed_images[temp_successful[vi]] = torch.clamp(
-                    original_image + adb * perturbations[temp_successful[vi]], 
-                    0.0, 1.0
-                )
+            while vi < len(succVtemp):
+                perturbed_images[succVtemp[vi]] = torch.clamp(
+                    original_image + ADB * perturbations[succVtemp[vi]], 0.0, 1.0)
                 
                 with torch.no_grad():
-                    pred = model(perturbed_images[temp_successful[vi]]).argmax(1)
-                predictions[temp_successful[vi]] = pred.cpu()
-                query_count += 1
+                    pred = model(perturbed_images[succVtemp[vi]]).argmax(1)
+                predicted[succVtemp[vi]] = pred.cpu()
+                query = query + 1
                 
-                if pred.item() != label.item():
-                    self.offspring_directions[temp_successful[vi]].Rmax = adb
-                    self.chosen_direction = temp_successful[vi]
-                    
-                    if self.offspring_directions[temp_successful[vi]].Rmax <= target_radius:
-                        return query_count
-                    vi += 1
+                if predicted[succVtemp[vi]].item() != label.item():
+                    self.offspringVs[succVtemp[vi]].Rmax = ADB
+                    self.chosen_v = succVtemp[vi]
+                    if self.offspringVs[succVtemp[vi]].Rmax <= aim_r:
+                        self.chosen_v = succVtemp[vi]
+                        return query
+                    vi = vi + 1
                 else:
-                    self.offspring_directions[temp_successful[vi]].Rmin = adb
-                    temp_successful.pop(vi)
+                    self.offspringVs[succVtemp[vi]].Rmin = ADB
+                    succVtemp.pop(vi)
 
-            if len(temp_successful) == 0:
-                low = adb
-            elif len(temp_successful) == 1:
-                self.chosen_direction = temp_successful[0]
-                return query_count
-            elif len(temp_successful) >= 2:
-                high = adb
-                successful_directions = temp_successful
+            if len(succVtemp) == 0:
+                low = ADB
+            elif len(succVtemp) == 1:
+                self.chosen_v = succVtemp[0]
+                return query
+            elif len(succVtemp) >= 2:
+                high = ADB
+                succV = succVtemp
         
-        # If directions are close, return the first one
-        self.chosen_direction = successful_directions[0]
-        return query_count
+        # d1 and d2 are close, just return d1
+        self.chosen_v = succV[0]
+        return query
 
 
-# ==================== Helper Functions ====================
+# ==================== Progress Display ====================
 
-def get_next_adb(low, high, target_radius, rmax, binary_mode):
-    """
-    Get next ADB (Approximate Decision Boundary) value.
-    
-    Args:
-        low: Lower bound
-        high: Upper bound  
-        target_radius: Target epsilon
-        rmax: Maximum radius
-        binary_mode: 0 for midpoint, 1 for median-based
-    """
-    if binary_mode == 0:
-        # Simple midpoint
-        return (low + high) / 2
-    else:
-        # Median-based (using probability distribution)
-        return get_median_adb(low, high, target_radius, rmax)
-
-
-def get_median_adb(low, high, target_radius, rmax):
-    """Calculate median-based ADB using probability distribution."""
-    if high <= target_radius:
-        return (low + high) / 2
-    
-    # Use normal distribution approximation
-    try:
-        # Simplified median calculation
-        mid = (low + high) / 2
-        
-        # Adjust based on target radius
-        if mid > target_radius:
-            # Bias toward lower values
-            weight = min(1.0, target_radius / mid)
-            mid = low + weight * (high - low) * 0.5
-        
-        return mid
-    except:
-        return (low + high) / 2
-
-
-def progress_bar(query, iteration, radius):
-    """Display progress bar."""
-    sys.stdout.write(f'\rQuery: {query:<6} | Iter: {iteration:<4} | R_inf: {radius:.4f}')
+def progress_bar(imgi, query, iter, Rnow):
+    """Show the results dynamically."""
+    sys.stdout.write(f'\rImg{imgi} Query{query:.0f}\t Iter{iter:.0f}\t Rinf{Rnow:.4f}')
     sys.stdout.flush()
 
 
-# ==================== Main Attack Function ====================
+# ==================== Algorithm 1: Main Attack Function ====================
 
-def ADBA_Attack(model, device, original_image, label, epsilon, budget, 
-                init_dir=1, offspring_n=2, binary_mode=1):
-    """
-    ADBA (Approximate Decision Boundary Approach) L-infinity Attack.
-    
-    Args:
-        model: PyTorch model
-        device: torch device
-        original_image: Original image tensor [1, C, H, W]
-        label: True label tensor [1]
-        epsilon: Target L-infinity perturbation bound
-        budget: Maximum number of queries
-        init_dir: Initial direction (1, -1, or 0 for random)
-        offspring_n: Number of offspring directions per iteration
-        binary_mode: Binary search mode (0: midpoint, 1: median)
-    
-    Returns:
-        adversarial_image: Adversarial image tensor
-        success: Boolean indicating if attack succeeded
-        query_count: Total number of queries used
-        final_radius: Final L-infinity radius achieved
-    """
+def ATK_ADBA(model, device, original_image_x, img_number, label_y, aim_r, 
+             tolerance_binary_iters, initDir, offspringN, binaryM, budget, channels=None):
+
     model.eval()
     
-    # Get image dimensions
-    _, channels, size_x, size_y = original_image.shape
-    pix_num = channels * size_x * size_y
+    # Extract dimensions
+    _, size_channel, size_x, size_y = original_image_x.shape
+    if channels is not None and channels == 1:
+        size_channel = channels
+    pix_num = size_channel * size_x * size_y
     
     # Initialize perturbation direction
-    v0 = PerturbationDirection(channels, size_x, size_y, init_dir, device)
-    
-    # Initialize blocks for hierarchical search
-    b0 = Block(0, pix_num - 1)
-    bs1 = b0.cut_block(offspring_n)
-    blocks = [bs1]
-    
-    # Initialize iteration state
-    iteration_state = IterationState(v0, offspring_n, device)
-    
-    # First mutation
-    query_count = iteration_state.mutation(
-        model, original_image, label, epsilon, blocks[0], binary_mode
-    )
-    
+    v0 = V(size_channel, size_x, size_y, initDir, device)
+
     iter_num = 1
     block_iter = 0
+    b0 = Block(0, pix_num - 1)
+    bs1 = b0.cut_block(offspringN)
+    blocks = [bs1]
+
+    query = 0
+    ITERATION = Iter(v0, offspringN, device, 1)
     
-    progress_bar(query_count, iter_num, iteration_state.best_direction.Rmax)
-    
-    # Main attack loop
-    while (query_count < budget) and (iteration_state.best_direction.Rmax > epsilon):
-        block_iter += 1
+    # First mutation
+    query = query + ITERATION.mutation(
+        model, original_image_x, label_y, aim_r, tolerance_binary_iters, blocks[0], binaryM)
+    progress_bar(img_number, query, iter_num, ITERATION.old_vbest.Rmax)
+
+    # Main ATK loop
+    while (query < budget) and (ITERATION.old_vbest.Rmax > aim_r):
+        block_iter = block_iter + 1
         blocks_i = []
-        
         for i, bi in enumerate(blocks[block_iter - 1]):
-            blocks_i.extend(bi.cut_block(offspring_n))
-            
-            query_plus = iteration_state.mutation(
-                model, original_image, label, epsilon,
-                blocks_i[offspring_n * i : offspring_n * (i + 1)],
-                binary_mode
-            )
-            
-            query_count += query_plus
-            iter_num += 1
-            
-            progress_bar(query_count, iter_num, iteration_state.best_direction.Rmax)
-            
-            if (iteration_state.best_direction.Rmax <= epsilon) or (query_count >= budget):
+            blocks_i.extend(bi.cut_block(offspringN))
+            query_plus = ITERATION.mutation(
+                model, original_image_x, label_y, aim_r, tolerance_binary_iters,
+                blocks_i[offspringN * i:offspringN * (i + 1)], binaryM)
+            query = query + query_plus
+            progress_bar(img_number, query, iter_num, ITERATION.old_vbest.Rmax)
+            iter_num = iter_num + 1
+            if (ITERATION.old_vbest.Rmax <= aim_r) or query >= budget:
                 break
-        
         blocks.append(copy.deepcopy(blocks_i))
-    
+
     print()  # New line after progress bar
     
     # Generate final adversarial image
-    final_radius = iteration_state.best_direction.Rmax
-    adversarial_v = iteration_state.best_direction.to_tensor()
-    adversarial_image = torch.clamp(
-        original_image + final_radius * adversarial_v, 
-        0.0, 1.0
+    Rbest = ITERATION.old_vbest.Rmax
+    adversarial_v = ITERATION.old_vbest.advv_to_tensor()
+    adversarial_image = original_image_x + Rbest * adversarial_v
+    adversarial_image = torch.clamp(adversarial_image, 0.0, 1.0)
+
+    success = 1 if Rbest <= aim_r else -1
+
+    return success, query, ITERATION.iter_n, Rbest, adversarial_image
+
+
+# ==================== Wrapper Function for adba_attack.py ====================
+
+def ADBA_Attack(model, device, original_image, label, epsilon, budget, 
+                init_dir=1, offspring_n=2, binary_mode=1, channels=None):
+    """
+    Simple wrapper function for ADBA attack.
+    Interfaces with ADBA_AttackWrapper in adba_attack.py
+    
+    Args:
+        model: Target model (PyTorch model)
+        device: torch device
+        original_image: Original image tensor [1, C, H, W]
+        label: True label tensor
+        epsilon: Maximum L-inf perturbation (aim_r)
+        budget: Maximum queries per image
+        init_dir: Initial direction (1, -1, or 0 for random)
+        offspring_n: Number of offspring directions
+        binary_mode: 0=midpoint (ADBA), 1=median (ADBA-md)
+        channels: Force channel count (optional)
+    
+    Returns:
+        adv_image: Adversarial image tensor [1, C, H, W]
+        success: Boolean (True if attack succeeded)
+        queries: Total queries used
+        final_radius: Final perturbation radius (Rbest)
+    """
+    # Check if model correctly classifies original image
+    model.eval()
+    with torch.no_grad():
+        pred = model(original_image).argmax(1)
+    
+    if pred.item() != label.item():
+        # Model already misclassifies - return original image
+        return original_image, True, 0, 0.0
+    
+    # Run ATK_ADBA
+    success_int, queries, iter_n, Rbest, adv_image = ATK_ADBA(
+        model=model,
+        device=device,
+        original_image_x=original_image,
+        img_number=0,  # Single image, use 0
+        label_y=label,
+        aim_r=epsilon,
+        tolerance_binary_iters=8,  # Default from original
+        initDir=init_dir,
+        offspringN=offspring_n,
+        binaryM=binary_mode,
+        budget=budget,
+        channels=channels
     )
     
-    # Determine success
-    success = (final_radius <= epsilon)
+    # Convert success from int (1/-1) to bool
+    success = (success_int == 1)
     
-    return adversarial_image, success, query_count, final_radius
+    return adv_image, success, queries, Rbest

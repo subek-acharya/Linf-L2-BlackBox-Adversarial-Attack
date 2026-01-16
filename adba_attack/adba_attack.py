@@ -2,22 +2,25 @@ import torch
 from torch.utils.data import TensorDataset, DataLoader
 from .adba import ADBA_Attack
 
+
 def ADBA_AttackWrapper(model, device, dataLoader, config):
     """
-    Wrapper function for ADBA attack to match your existing attack interface.
+    Wrapper function for ADBA attack.
     
     Args:
-        model: PyTorch model
+        model: Target model (must accept [batch, C, H, W] input)
         device: torch device (cuda/cpu)
-        dataLoader: DataLoader with (images, labels)
-        config: Dictionary with attack configuration
-            - epsilon: L-inf perturbation bound (e.g., 0.3)
-            - budget: Maximum number of queries per image
-            - init_dir: Initial direction (1, -1, or 0 for random)
-            - offspring_n: Number of offspring directions (default: 2)
+        dataLoader: DataLoader with (images, labels) batches
+        config: Dictionary with attack parameters:
+            - epsilon: Maximum L-inf perturbation (default: 0.3)
+            - budget: Maximum queries per image (default: 10000)
+            - init_dir: Initial direction 1/-1/0 (default: 1)
+            - offspring_n: Number of offspring (default: 2)
+            - binary_mode: 0=midpoint (ADBA), 1=median (ADBA-md) (default: 1)
+            - channels: Force channel count (default: None)
     
     Returns:
-        advLoader: DataLoader with adversarial images and labels
+        advLoader: DataLoader with adversarial examples
     """
     
     # Extract config parameters with defaults
@@ -26,6 +29,7 @@ def ADBA_AttackWrapper(model, device, dataLoader, config):
     init_dir = config.get("init_dir", 1)
     offspring_n = config.get("offspring_n", 2)
     binary_mode = config.get("binary_mode", 1)  # 0: mid, 1: median
+    channels = config.get("channels", None)
     
     all_adv_images = []
     all_labels = []
@@ -34,7 +38,7 @@ def ADBA_AttackWrapper(model, device, dataLoader, config):
     
     total_batches = len(dataLoader)
     
-    # ADBA processes one image at a time, so we iterate through samples
+    # ADBA processes one image at a time
     sample_idx = 0
     
     for batch_idx, (images, labels) in enumerate(dataLoader):
@@ -58,7 +62,8 @@ def ADBA_AttackWrapper(model, device, dataLoader, config):
                 budget=budget,
                 init_dir=init_dir,
                 offspring_n=offspring_n,
-                binary_mode=binary_mode
+                binary_mode=binary_mode,
+                channels=channels
             )
             
             all_adv_images.append(adv_image.cpu())
@@ -80,10 +85,25 @@ def ADBA_AttackWrapper(model, device, dataLoader, config):
     total_count = len(all_success)
     avg_queries = sum(all_queries) / len(all_queries) if all_queries else 0
     
+    # Calculate median queries for successful attacks
+    successful_queries = [q for q, s in zip(all_queries, all_success) if s]
+    if successful_queries:
+        import statistics
+        median_queries = statistics.median(successful_queries)
+        avg_successful_queries = sum(successful_queries) / len(successful_queries)
+    else:
+        median_queries = 0
+        avg_successful_queries = 0
+    
     print("\n" + "=" * 60)
     print(f"ADBA Attack Summary:")
     print(f"  - Success Rate: {success_count}/{total_count} ({100*success_count/total_count:.2f}%)")
-    print(f"  - Average Queries: {avg_queries:.2f}")
+    print(f"  - Average Queries (all): {avg_queries:.2f}")
+    print(f"  - Average Queries (successful): {avg_successful_queries:.2f}")
+    print(f"  - Median Queries (successful): {median_queries:.2f}")
+    print(f"  - Epsilon: {epsilon}")
+    print(f"  - Budget: {budget}")
+    print(f"  - Mode: {'ADBA-md (median)' if binary_mode == 1 else 'ADBA (midpoint)'}")
     print("=" * 60)
     
     # Create adversarial DataLoader
