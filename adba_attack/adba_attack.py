@@ -4,24 +4,6 @@ from .adba import ADBA_Attack
 
 
 def ADBA_AttackWrapper(model, device, dataLoader, config):
-    """
-    Wrapper function for ADBA attack.
-    
-    Args:
-        model: Target model (must accept [batch, C, H, W] input)
-        device: torch device (cuda/cpu)
-        dataLoader: DataLoader with (images, labels) batches
-        config: Dictionary with attack parameters:
-            - epsilon: Maximum L-inf perturbation (default: 0.3)
-            - budget: Maximum queries per image (default: 10000)
-            - init_dir: Initial direction 1/-1/0 (default: 1)
-            - offspring_n: Number of offspring (default: 2)
-            - binary_mode: 0=midpoint (ADBA), 1=median (ADBA-md) (default: 1)
-            - channels: Force channel count (default: None)
-    
-    Returns:
-        advLoader: DataLoader with adversarial examples
-    """
     
     # Extract config parameters with defaults
     epsilon = config.get("epsilon", 0.3)
@@ -53,7 +35,7 @@ def ADBA_AttackWrapper(model, device, dataLoader, config):
             print(f"  Sample {sample_idx + 1}: ", end="")
             
             # Run ADBA attack on single image
-            adv_image, success, queries, final_radius = ADBA_Attack(
+            adv_image, success, queries, actual_radius = ADBA_Attack(
                 model=model,
                 device=device,
                 original_image=image,
@@ -71,8 +53,12 @@ def ADBA_AttackWrapper(model, device, dataLoader, config):
             all_queries.append(queries)
             all_success.append(success)
             
-            status = "SUCCESS" if success else "FAILED"
-            print(f"{status} | Queries: {queries} | L-inf: {final_radius:.4f}")
+            if success:
+                status = "SUCCESS"
+            else:
+                status = f"FAILED (using ε={epsilon:.4f})"
+            
+            print(f"{status} | Queries: {queries} | L-inf: {actual_radius:.4f}")
             
             sample_idx += 1
     
@@ -83,27 +69,12 @@ def ADBA_AttackWrapper(model, device, dataLoader, config):
     # Print summary
     success_count = sum(all_success)
     total_count = len(all_success)
-    avg_queries = sum(all_queries) / len(all_queries) if all_queries else 0
-    
-    # Calculate median queries for successful attacks
-    successful_queries = [q for q, s in zip(all_queries, all_success) if s]
-    if successful_queries:
-        import statistics
-        median_queries = statistics.median(successful_queries)
-        avg_successful_queries = sum(successful_queries) / len(successful_queries)
-    else:
-        median_queries = 0
-        avg_successful_queries = 0
-    
+
     print("\n" + "=" * 60)
     print(f"ADBA Attack Summary:")
     print(f"  - Success Rate: {success_count}/{total_count} ({100*success_count/total_count:.2f}%)")
-    print(f"  - Average Queries (all): {avg_queries:.2f}")
-    print(f"  - Average Queries (successful): {avg_successful_queries:.2f}")
-    print(f"  - Median Queries (successful): {median_queries:.2f}")
     print(f"  - Epsilon: {epsilon}")
-    print(f"  - Budget: {budget}")
-    print(f"  - Mode: {'ADBA-md (median)' if binary_mode == 1 else 'ADBA (midpoint)'}")
+    print(f"  - Failed attacks: Returned with ε-bounded noise")
     print("=" * 60)
     
     # Create adversarial DataLoader

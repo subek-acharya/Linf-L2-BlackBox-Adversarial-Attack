@@ -246,41 +246,19 @@ def ATK_ADBA(model, device, original_image_x, img_number, label_y, aim_r,
     
     # Generate final adversarial image
     Rbest = ITERATION.old_vbest.Rmax
-    adversarial_v = ITERATION.old_vbest.advv_to_tensor()
+    adversarial_v = ITERATION.old_vbest.advv_to_tensor()   
     adversarial_image = original_image_x + Rbest * adversarial_v
     adversarial_image = torch.clamp(adversarial_image, 0.0, 1.0)
 
     success = 1 if Rbest <= aim_r else -1
 
-    return success, query, ITERATION.iter_n, Rbest, adversarial_image
+    return success, query, ITERATION.iter_n, Rbest, adversarial_image, adversarial_v    # added adversarial_v for vbest return
 
 
 # ==================== Wrapper Function for adba_attack.py ====================
 
-def ADBA_Attack(model, device, original_image, label, epsilon, budget, 
-                init_dir=1, offspring_n=2, binary_mode=1, channels=None):
-    """
-    Simple wrapper function for ADBA attack.
-    Interfaces with ADBA_AttackWrapper in adba_attack.py
+def ADBA_Attack(model, device, original_image, label, epsilon, budget, init_dir=1, offspring_n=2, binary_mode=1, channels=None):
     
-    Args:
-        model: Target model (PyTorch model)
-        device: torch device
-        original_image: Original image tensor [1, C, H, W]
-        label: True label tensor
-        epsilon: Maximum L-inf perturbation (aim_r)
-        budget: Maximum queries per image
-        init_dir: Initial direction (1, -1, or 0 for random)
-        offspring_n: Number of offspring directions
-        binary_mode: 0=midpoint (ADBA), 1=median (ADBA-md)
-        channels: Force channel count (optional)
-    
-    Returns:
-        adv_image: Adversarial image tensor [1, C, H, W]
-        success: Boolean (True if attack succeeded)
-        queries: Total queries used
-        final_radius: Final perturbation radius (Rbest)
-    """
     # Check if model correctly classifies original image
     model.eval()
     with torch.no_grad():
@@ -291,8 +269,8 @@ def ADBA_Attack(model, device, original_image, label, epsilon, budget,
         return original_image, True, 0, 0.0
     
     # Run ATK_ADBA
-    success_int, queries, iter_n, Rbest, adv_image = ATK_ADBA(
-        model=model,
+    success_int, queries, iter_n, Rbest, adv_image, Vbest = ATK_ADBA(    # return vbest to use to find noisy image at epsilon in best v direction
+        model=model, 
         device=device,
         original_image_x=original_image,
         img_number=0,  # Single image, use 0
@@ -308,5 +286,10 @@ def ADBA_Attack(model, device, original_image, label, epsilon, budget,
     
     # Convert success from int (1/-1) to bool
     success = (success_int == 1)
-    
-    return adv_image, success, queries, Rbest
+       
+    if success:
+        return adv_image, True, queries, Rbest
+    else:
+        # Attack failed: return image with perturbation at exactly epsilon using the best direction found (Vbest)
+        epsilon_bounded_adv = torch.clamp(original_image + epsilon * Vbest, 0.0, 1.0)   
+        return epsilon_bounded_adv, False, queries, epsilon
