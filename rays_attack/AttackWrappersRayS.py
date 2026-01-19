@@ -1,24 +1,30 @@
+#This code has the quanitization modification to try and fix loading problems
 #Original code from:https://github.com/uclaml/RayS
+#This attack has been modified to work the the ModelPlus and ShuffleDefense class
 import numpy as np
 import torch
 import utils
 import time 
 import torch.nn.functional as F
 
-def RaySAttack(model, epsMax, queryLimit, cleanLoader):
+def RaySAttack(device, model, epsMax, queryLimit, cleanLoader):
     xClean, yClean = utils.DataLoaderToTensor(cleanLoader)
-    rayS = RayS(model, epsilon=epsMax, order = np.inf)
+    rayS = RayS(device, model, epsilon=epsMax, order = np.inf)
     xAdv = torch.zeros((xClean.shape[0], xClean.shape[1], xClean.shape[2], xClean.shape[3]))
     #Go through and attack the samples 
     for i in range(0, xClean.shape[0]):
         print(i)
         start = time.time()
-        xAdvCurrent, stop_queries, dist, isLessDist = rayS.attack_hard_label(xClean[i].cuda(), yClean[i].cuda(), target=None, query_limit=queryLimit, seed=None)
+        #yCurrent = torch.zeros((1,))
+        #yCurrent[0] = 
+        xAdvCurrent, stop_queries, dist, isLessDist = rayS.attack_hard_label(xClean[i].to(device), yClean[i].to(device), target=None, query_limit=queryLimit, seed=None)
+        #xAdvCurrent, stop_queries, dist, isLessDist = rayS.attack_hard_label(xClean[i].cuda(), yClean[i].cuda(), target=None, query_limit=queryLimit, seed=None)
         xAdvCurrent = xAdvCurrent.cpu().detach()
         dist = torch.dist(xAdvCurrent, xClean[i], np.inf)
-        if dist>epsMax:
-            print("Attack failed, returning clean sample instead.")
-            xAdv[i] = xClean[i]
+        if dist>epsMax:    # -----> Added this logic to return adversarial samples in case of failed attack as well
+            print(f"Attack failed/exceeded epsilon (dist={dist:.4f}). Clamping to eps={epsMax}")
+            xAdv[i] = torch.clamp(xAdvCurrent, xClean[i] - epsMax, xClean[i] + epsMax)
+            xAdv[i] = torch.clamp(xAdv[i], 0., 1.)     
         else:
             xAdv[i] = xAdvCurrent
         end = time.time()
@@ -28,7 +34,7 @@ def RaySAttack(model, epsMax, queryLimit, cleanLoader):
     return advLoader
 
 class RayS(object):
-    def __init__(self, model, order=np.inf, epsilon=0.3, early_stopping=True):
+    def __init__(self, device, model, order=np.inf, epsilon=0.3, early_stopping=True):
         self.model = model
         self.order = order
         self.epsilon = epsilon
@@ -38,9 +44,22 @@ class RayS(object):
         self.lin_search_rad = 10
         self.pre_set = {1, -1}
         self.early_stopping = early_stopping
+        self.device = device
 
+    #Added by K for voter work
+    def quantizeTensorK(self, x):
+        #First convert to pixel value
+        x = x*255.0
+        #Round to nearest whole pixel value
+        x = torch.round(x)
+        #Convert back to decimal number
+        x = x/255.0
+        return x
+
+    #Modify to include quantization
     def get_xadv(self, x, v, d, lb=0., rb=1.):
-        out = x + d * v
+        #out = x + d * v
+        out = self.quantizeTensorK(x + d * v)
         return torch.clamp(out, lb, rb)
 
     def attack_hard_label(self, x, y, target=None, query_limit=10000, seed=None):
@@ -55,7 +74,8 @@ class RayS(object):
 
         self.queries = 0
         self.d_t = np.inf
-        self.sgn_t = torch.sign(torch.ones(shape)).cuda()
+        #self.sgn_t = torch.sign(torch.ones(shape)).cuda()
+        self.sgn_t = torch.sign(torch.ones(shape)).to(self.device)
         self.x_final = self.get_xadv(x, self.sgn_t, self.d_t)
         dist = torch.tensor(np.inf)
         block_level = 0
@@ -95,11 +115,11 @@ class RayS(object):
     def search_succ(self, x, y, target):
         self.queries += 1
         if target:
-            #return self.model.predictT(x[None]).argmax(axis=1) == target
+            # return self.model.predictT(x[None]).argmax(axis=1) == target
             return self.model(x[None].cuda()).argmax(axis=1) == target
             #return self.model.predict_label(x) == target
         else:
-            #return self.model.predictT(x[None]).argmax(axis=1) != y
+            # return self.model.predictT(x[None]).argmax(axis=1) != y
             #g = self.model(x[None].cuda()).argmax(axis=1)
             return self.model(x[None].cuda()).argmax(axis=1) != y
             #return self.model.predict_label(x) != y
@@ -144,7 +164,3 @@ class RayS(object):
 
     def __call__(self, data, label, target=None, seed=None, query_limit=10000):
         return self.attack_hard_label(data, label, target=target, seed=seed, query_limit=query_limit)
-
-
-
-
