@@ -7,6 +7,7 @@ from model_architecture import ResNet, cait, VGG, MultiOutputSVM
 import rays_attack
 import surfree_attack
 import square_attack
+import adba_attack
 import utils
 
 import matplotlib.pyplot as plt
@@ -16,7 +17,7 @@ from PIL import Image
 def main():
 
     # --------- ResNet models ---------
-    # modelDir="./checkpoint/ModelResNet20-VotingOnlyBubbles-v2-Grayscale-Run1.th"
+    modelDir="./checkpoint/ModelResNet20-VotingOnlyBubbles-v2-Grayscale-Run1.th"
     # modelDir = "./checkpoint/ModelResNet20-VotingCombined-v2-Grayscale-Run1.th"
     
     # --------- CaiT models ----------
@@ -25,10 +26,10 @@ def main():
     
     # --------- VGG models -----------
     # modelDir = "./checkpoint/ModelVgg16-B.th"
-    modelDir = "./checkpoint/ModelVgg16-C2.th"
+    # modelDir = "./checkpoint/ModelVgg16-C2.th"
     
     # --------- SVM models ------------
-    # ---- OnlyBubbles ----
+    # # ---- OnlyBubbles ----
     # modelDir_base  = "./checkpoint/sklearn_SVM_OnlyBubbles_v2_Grayscale_Run1/base_pytorch_svm_OnlyBubbles_v2.pth"
     # modelDir_multi = "./checkpoint/sklearn_SVM_OnlyBubbles_v2_Grayscale_Run1/multi_output_svm_OnlyBubbles_v2.pth"
     # ---- Combined ----
@@ -45,12 +46,12 @@ def main():
     device = torch.device("cuda")
 
     # -------------- Loading ResNet model ------------------
-    # # Create the ResNet model
-    # model = ResNet.resnet20(inputImageSize, dropOutRate, numClasses).to(device)
-    # # Load in the trained weights of the model
-    # checkpoint = torch.load(modelDir, weights_only=False)
-    # # Load the state dictionary into the model
-    # model.load_state_dict(checkpoint["state_dict"])
+    # Create the ResNet model
+    model = ResNet.resnet20(inputImageSize, dropOutRate, numClasses).to(device)
+    # Load in the trained weights of the model
+    checkpoint = torch.load(modelDir, weights_only=False)
+    # Load the state dictionary into the model
+    model.load_state_dict(checkpoint["state_dict"])
 
     # -------------- Loading CaiT model ---------------------
     # model = cait.CaiT(
@@ -76,16 +77,16 @@ def main():
     # model.cls_transformer.layer_dropout   = 0.0
 
     # ----------------- Loading VGG model ----------------------
-    imgH, imgW   = 40, 50
-    # Create the VGG16 model
-    model = VGG.VGG("VGG16", imgH, imgW, numClasses).to(device)
-    # Load checkpoint (handles raw state_dict or dict with 'state_dict'; strips 'module.' if present)
-    raw = torch.load(modelDir, map_location="cpu")
-    state = raw.get("state_dict", raw)
-    state = { (k[7:] if k.startswith("module.") else k): v for k, v in state.items() }
+    # imgH, imgW   = 40, 50
+    # # Create the VGG16 model
+    # model = VGG.VGG("VGG16", imgH, imgW, numClasses).to(device)
+    # # Load checkpoint (handles raw state_dict or dict with 'state_dict'; strips 'module.' if present)
+    # raw = torch.load(modelDir, map_location="cpu")
+    # state = raw.get("state_dict", raw)
+    # state = { (k[7:] if k.startswith("module.") else k): v for k, v in state.items() }
     
-    missing, unexpected = model.load_state_dict(state, strict=False)
-    print(f"Loaded checkpoint (strict=False) | missing={len(missing)} unexpected={len(unexpected)}")
+    # missing, unexpected = model.load_state_dict(state, strict=False)
+    # print(f"Loaded checkpoint (strict=False) | missing={len(missing)} unexpected={len(unexpected)}")
 
     # ----------------- Loading SVM model ------------------------
     # INPUT_DIM = 1 * 40 * 50  # 2000
@@ -124,23 +125,23 @@ def main():
     totalSamplesRequired = 1000
     correctLoader = utils.GetCorrectlyIdentifiedSamplesBalanced(model, totalSamplesRequired, valLoader, numClasses)
 
+    # Check the number of samples in the correctLoader
+    print("Number of samples in correctLoader:", len(correctLoader.dataset))
+
     # Correct Classifier Accuracy
     corrAcc = utils.validateD(correctLoader, model, device)
     print("Voter Dataset correctLoader Clean Acc:", corrAcc)
 
-    # Check the number of samples in the correctLoader
-    print("Number of samples in correctLoader:", len(correctLoader.dataset))
-
-    # Get pixel bounds for a correctLoader
+    # # Get pixel bounds for a correctLoader
     minVal, maxVal = utils.GetDataBounds(correctLoader, device)
     print("Data Range for Correct Loader:", [round(minVal, 4), round(maxVal, 4)])
 
     # RayS Attack Parameters
-    # epsilonMax = 255/255
-    # queryLimit = 1000
+    epsilonMax = 255/255
+    queryLimit = 10000
 
     # -------------- Linf Attack - RaySAttack ------------
-    # advLoaderRayS = rays_attack.RaySAttack(model, epsilonMax, queryLimit, correctLoader)
+    # advLoaderRayS = rays_attack.RaySAttack(device, model, epsilonMax, queryLimit, correctLoader)
     # advAcc = utils.validateD(advLoaderRayS, model, device)
     # print("RayS black-box robustness:", advAcc)
 
@@ -190,14 +191,22 @@ def main():
     # print(f"SurFree Attack Results:")
     # print(f"  - Adversarial Accuracy: {advAcc}")
 
+    # # ✓ SAVE CLEAN AND ADVERSARIAL SAMPLES
+    # save_clean_and_adversarial_samples(
+    #     cleanLoader=correctLoader,
+    #     advLoader=advLoader,
+    #     output_dir="./adversarial_samples",
+    #     device=device
+    # )
+
     # ---------------- Square Attack L-inf ------------------
     # advLoaderSquareLinf = square_attack.SquareAttackLinf_Wrapper(
     #     model=model,
     #     device=device,
     #     dataLoader=correctLoader,
-    #     eps=64/255,
+    #     eps=1,
     #     n_iters=50000,
-    #     p_init=10,
+    #     p_init=100,
     #     n_classes=numClasses,
     #     targeted=False,
     # )
@@ -206,50 +215,83 @@ def main():
     # print("Square Attack Linf black-box robustness:", advAccSquareLinf)
 
     # ----------------- Square Attack l2 -----------------------
-    advLoaderSquareL2 = square_attack.SquareAttackL2_Wrapper(
-        model=model,
-        device=device,
-        dataLoader=correctLoader,
-        eps=45,
-        n_iters=10000,
-        p_init=0.7,
-        n_classes=numClasses,
-        targeted=False,
-    )
-    
-    advAccSquareL2 = utils.validateD(advLoaderSquareL2, model, device)
-    print("Square Attack L2 black-box robustness:", advAccSquareL2)
-
-    # ----------------------- L-inf Attack - ADBA Attack ---------------
-    
-    # # Configuration for ADBA attack
-    # adba_config = {
-    #     "epsilon": 0.1,          # L-inf perturbation bound (adjust as needed)
-    #     "budget": 5000,           # Maximum queries per image
-    #     "init_dir": 0,            # Initial direction: 0=random, 1=all +1, -1=all -1
-    #     "offspring_n": 2,         # Number of offspring directions
-    #     "binary_mode": 1          # Binary search mode: 0=midpoint, 1=median-based
-    # }
-    
-    # print("\n" + "=" * 60)
-    # print("Starting ADBA Attack...")
-    # print(f"Config: {adba_config}")
-    # print("=" * 60)
-    
-    # # Run ADBA attack
-    # adba_advLoader = adba_attack.ADBA_AttackWrapper(
+    # advLoaderSquareL2 = square_attack.SquareAttackL2_Wrapper(
     #     model=model,
     #     device=device,
     #     dataLoader=correctLoader,
-    #     config=adba_config
+    #     eps=45,
+    #     n_iters=10000,
+    #     p_init=0.7,
+    #     n_classes=numClasses,
+    #     targeted=False,
     # )
     
-    # # Calculate adversarial accuracy
-    # adba_advAcc = utils.validateD(adba_advLoader, model, device)
-    # print(f"\nADBA Attack Results:")
-    # print(f"  - Clean Accuracy: {corrAcc}")
-    # print(f"  - Adversarial Accuracy: {adba_advAcc}")
-    # print(f"  - Attack Success Rate: {1 - adba_advAcc}")
+    # advAccSquareL2 = utils.validateD(advLoaderSquareL2, model, device)
+    # print("Square Attack L2 black-box robustness:", advAccSquareL2)
+
+    # ----------------------- L-inf Attack - ADBA Attack ---------------
+    
+    # Configuration for ADBA attack
+    adba_config = {
+        "epsilon": 1,          # L-inf perturbation bound (adjust as needed)
+        "budget": 5000,           # Maximum queries per image
+        "init_dir": 1,            # Initial direction: 0=random, 1=all +1, -1=all -1
+        "offspring_n": 2,         # Number of offspring directions
+        "binary_mode": 1,          # Binary search mode: 0=midpoint, 1=median-based
+        "channels": 1             # Grayscale images
+    }
+    
+    print("\n" + "=" * 60)
+    print("Starting ADBA Attack...")
+    print(f"Config: {adba_config}")
+    print("=" * 60)
+    
+    # Run ADBA attack
+    adba_advLoader = adba_attack.ADBA_AttackWrapper(
+        model=model,
+        device=device,
+        dataLoader=correctLoader,
+        config=adba_config
+    )
+    
+    # Calculate adversarial accuracy
+    adba_advAcc = utils.validateD(adba_advLoader, model, device)
+    print(f"\nADBA Attack Results:")
+    print(f"  - Clean Accuracy: {corrAcc}")
+    print(f"  - Adversarial Accuracy: {adba_advAcc}")
+    print(f"  - Attack Success Rate: {1 - adba_advAcc}")
+
+    # -------------- Save Adversarial Loader as Dictionary .pth ----------------
+    
+    # Extract all adversarial images and labels from the loader
+    adv_images = []
+    adv_labels = []
+    
+    for batch_images, batch_labels in advLoaderRayS:
+        adv_images.append(batch_images.cpu())
+        adv_labels.append(batch_labels.cpu())
+    
+    # Concatenate all batches into single tensors
+    x_adv = torch.cat(adv_images, dim=0).float()  # [1000, 1, 40, 50], float32 in [0,1]
+    y_clean = torch.cat(adv_labels, dim=0).long()  # 0/1 labels
+    
+    print(f"\nAdversarial data shapes:")
+    print(f"  - x_adv: {x_adv.shape}")
+    print(f"  - y_clean: {y_clean.shape}")
+    print(f"  - x_adv range: [{x_adv.min():.4f}, {x_adv.max():.4f}]")
+    
+    # Create the adversarial blob dictionary
+    adv_blob = {
+        "data": x_adv,  # [1000, 1, 40, 50], float32 in [0,1]
+        "binary_labels": y_clean,  # 0/1
+        "original_labels": y_clean,  # same as binary_labels for OnlyBubbles
+    }
+    
+    # Save to a .pth file
+    save_path = "./adversarial_samples/RayS_adv_VGG16-B_eps16by255.pth"
+    torch.save(adv_blob, save_path)
+    print(f"\n Adversarial blob saved to: {save_path}")
+    print(f"  Dictionary keys: {list(adv_blob.keys())}")
 
     # ------------- Save 5 adversarial samples ---------------
     
@@ -262,7 +304,7 @@ def main():
     target_count = 5
     
     # Iterate through adversarial loader
-    for adv_images, labels in advLoaderSquareL2:
+    for adv_images, labels in adba_advLoader:
         for i in range(len(labels)):
             label = labels[i].item()
             
@@ -290,35 +332,6 @@ def main():
     print(f"Saved {saved_count[0]} images for label 0")
     print(f"Saved {saved_count[1]} images for label 1")
 
-    # -------------------- Save adversarial as numpy -------------------
-    
-    # Create output directory
-    output_dir = "./adversarial_samples"
-    os.makedirs(output_dir, exist_ok=True)
-    
-    # Collect all images and labels
-    all_images = []
-    all_labels = []
-    
-    for adv_images, labels in advLoaderSquareL2:
-        all_images.append(adv_images.cpu().numpy())
-        all_labels.append(labels.cpu().numpy())
-    
-    # Concatenate into single arrays
-    all_images = np.concatenate(all_images, axis=0)
-    all_labels = np.concatenate(all_labels, axis=0)
-    
-    print(f"Images shape: {all_images.shape}")  # (1000, 1, 40, 50)
-    print(f"Labels shape: {all_labels.shape}")  # (1000,)
-    
-    # Save as .npy files
-    np.save(f"{output_dir}/adversarial_images.npy", all_images)
-    np.save(f"{output_dir}/adversarial_labels.npy", all_labels)
-    
-    print(f"Saved to {output_dir}/adversarial_images.npy")
-    print(f"Saved to {output_dir}/adversarial_labels.npy")
-
-    # -----------------------------------------
     
 
 if __name__ == '__main__':
