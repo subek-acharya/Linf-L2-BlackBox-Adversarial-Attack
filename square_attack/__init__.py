@@ -1,1 +1,3 @@
 from .square_attack_linf import SquareAttackLinf_Wrapper
+from .square_attack_l2 import SquareAttackL2_Wrapper
+

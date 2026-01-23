@@ -33,8 +33,8 @@ def SquareAttackLinf_Wrapper(model, device, dataLoader, eps=0.05, n_iters=1000, 
     # Convert numpy arrays back to tensors using NumpyToTensor
     xAdv, yClean = utils.NumpyToTensor(all_adv_images, all_labels)
 
-    print("xAdv: /n", xAdv.shape)
-    print("n_queries: /n", n_queries.shape)
+    # print("xAdv: ", xAdv.shape)
+    print("n_queries: ", n_queries.shape)
     
     # Create and return adversarial dataLoader
     advLoader = utils.TensorToDataLoader(xAdv, yClean, transforms=None, batchSize=dataLoader.batch_size, randomizer=None)
@@ -53,7 +53,8 @@ def square_attack_linf(model, device, x, y, corr_classified, eps, n_iters, p_ini
 
     # [c, 1, w], i.e. vertical stripes work best for untargeted attacks
     init_delta = np.random.choice([-eps, eps], size=[x.shape[0], c, 1, w])
-    x_best = np.clip(x + init_delta, min_val, max_val)
+    # x_best = np.clip(x + init_delta, min_val, max_val)
+    x_best = np.clip(square_attack_utils.quantize_numpy(x + init_delta), min_val, max_val) # quantization applied
 
     logits = square_attack_utils.predict(model, x_best, device, batch_size=64)
     loss_min = square_attack_utils.loss(y, logits, targeted, loss_type=loss_type)
@@ -80,7 +81,8 @@ def square_attack_linf(model, device, x, y, corr_classified, eps, n_iters, p_ini
             while np.sum(np.abs(np.clip(x_curr_window + deltas[i_img, :, center_h:center_h+s, center_w:center_w+s], min_val, max_val) - x_best_curr_window) < 10**-7) == c*s*s:
                 deltas[i_img, :, center_h:center_h+s, center_w:center_w+s] = np.random.choice([-eps, eps], size=[c, 1, 1])
 
-        x_new = np.clip(x_curr + deltas, min_val, max_val)
+        # x_new = np.clip(x_curr + deltas, min_val, max_val)
+        x_new = np.clip(square_attack_utils.quantize_numpy(x_curr + deltas), min_val, max_val) # quantization applied
 
         logits = square_attack_utils.predict(model, x_new, device, batch_size=64)
         loss = square_attack_utils.loss(y_curr, logits, targeted, loss_type=loss_type)

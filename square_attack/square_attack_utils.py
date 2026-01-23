@@ -68,13 +68,17 @@ def meta_pseudo_gaussian_pert(s):
     
 # ---------------------------
 
+# Added for voter work
+def quantize_numpy(x):
+    x = x * 255.0
+    x = np.round(x)
+    x = x / 255.0
+    return x
+
 def dense_to_onehot(y_test, n_cls):
     y_test_onehot = np.zeros([len(y_test), n_cls], dtype=bool)
     y_test_onehot[np.arange(len(y_test)), y_test] = True
     return y_test_onehot
-
-import torch
-import numpy as np
 
 def predict(model, x, device, batch_size=64):
     x_torch = torch.from_numpy(x).float().to(device)
