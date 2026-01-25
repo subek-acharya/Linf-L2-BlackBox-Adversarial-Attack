@@ -10,24 +10,43 @@ def SquareAttackLinf_Wrapper(model, device, dataLoader, eps=0.05, n_iters=1000, 
     print("x_tensor: ", x_tensor.shape)
     all_original_examples, all_labels = utils.TensorToNumpy(x_tensor, y_tensor)
     
-    # Convert labels to one-hot
+    # Convert true labels to one-hot
     y_onehot = square_attack_utils.dense_to_onehot(all_labels, n_classes)
+
+    # ========== Generate target labels for targeted attack ==========
+    if targeted:
+        # Create target labels (any class except the true class)
+        y_target = np.zeros_like(all_labels)
+        for i in range(len(all_labels)):
+            # For binary (2 classes): if true label is 0, target is 1; if true is 1, target is 0
+            y_target[i] = 1 - all_labels[i]  # Flip the label for binary case
+        
+        y_target_onehot = square_attack_utils.dense_to_onehot(y_target, n_classes)
+        print(f"True labels (first 10): {all_labels[:10]}")
+        print(f"Target labels (first 10): {y_target[:10]}")
+    else:
+        y_target_onehot = y_onehot  # For untargeted, use true labels
+    # ========== END ==========
 
     # All samples are correctly classified (already filtered in main.py)
     corr_classified = np.ones(len(all_labels), dtype=bool)
+
+    # Determine loss type based on targeted flag
+    loss_type = "margin_loss" if not targeted else "cross_entropy"
+    print(f"Attack mode: {'Targeted' if targeted else 'Untargeted'}, Loss type: {loss_type}")
     
     # Run attack
     n_queries, all_adv_images = square_attack_linf(
         model=model,
         device=device,
         x=all_original_examples,
-        y=y_onehot,
+        y=y_target_onehot,
         corr_classified=corr_classified,
         eps=eps,
         n_iters=n_iters,
         p_init=p_init,
         targeted=targeted,
-        loss_type="cross_entropy",
+        loss_type=loss_type,
     )
 
     # Convert numpy arrays back to tensors using NumpyToTensor
