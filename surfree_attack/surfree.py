@@ -102,12 +102,20 @@ class SurFree():
         self.best_advs = attack.get_init_with_noise(model, X, labels) if starting_points is None else starting_points
         self.X = X
 
+        # ============== ADD THIS LINE ==============
+        print("Initial Advs distance:", distance(self.X, self.best_advs).cpu().numpy())
+        # ===========================================
+
         print("Checkpoint2")
 
         # Check if X are already adversarials.
         self._images_finished = model(X).argmax(1) != labels
-
         print("Already advs: ", self._images_finished.cpu().tolist())
+
+        # Check if best_advs are actually adversarial
+        best_advs_is_adv = model(self.best_advs).argmax(1) != labels
+        print("Best adversarial: ", best_advs_is_adv.cpu().tolist())
+        
         self.best_advs = torch.where(utils.atleast_kdim(self._images_finished, len(X.shape)), X, self.best_advs)
         self.best_advs = self._binary_search(self.best_advs, boost=True)
 

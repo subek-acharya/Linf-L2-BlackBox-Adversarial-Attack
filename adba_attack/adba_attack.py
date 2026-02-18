@@ -10,7 +10,7 @@ def ADBA_AttackWrapper(model, device, dataLoader, config):
     budget = config.get("budget", 10000)
     init_dir = config.get("init_dir", 1)
     offspring_n = config.get("offspring_n", 2)
-    binary_mode = config.get("binary_mode", 1)  # 0: mid, 1: median
+    binary_mode = config.get("binary_mode", 0)  # 0: mid, 1: median
     channels = config.get("channels", None)
     
     all_adv_images = []
@@ -32,7 +32,7 @@ def ADBA_AttackWrapper(model, device, dataLoader, config):
             image = images[i:i+1].to(device)  # Keep batch dimension [1, C, H, W]
             label = labels[i:i+1].to(device)
             
-            print(f"  Sample {sample_idx + 1}: ", end="")
+            print(f"  Sample {sample_idx + 1}: ")
             
             # Run ADBA attack on single image
             adv_image, success, queries, actual_radius = ADBA_Attack(

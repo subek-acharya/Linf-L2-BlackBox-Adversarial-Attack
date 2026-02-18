@@ -27,7 +27,7 @@ def SquareAttackL2_Wrapper(model, device, dataLoader, eps=0.5, n_iters=1000, p_i
         n_iters=n_iters,
         p_init=p_init,
         targeted=targeted,
-        loss_type="cross_entropy",
+        loss_type="margin_loss",
     )
 
     # Convert numpy arrays back to tensors using NumpyToTensor

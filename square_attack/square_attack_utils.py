@@ -70,9 +70,9 @@ def meta_pseudo_gaussian_pert(s):
 
 # Added for voter work
 def quantize_numpy(x):
-    x = x * 255.0
-    x = np.round(x)
-    x = x / 255.0
+    # x = x * 255.0
+    # x = np.round(x)
+    # x = x / 255.0
     return x
 
 def dense_to_onehot(y_test, n_cls):
@@ -96,6 +96,7 @@ def predict(model, x, device, batch_size=64):
 def loss(y, logits, targeted=False, loss_type='margin_loss'):
     
     if loss_type == 'margin_loss':
+        # print("Margin loss is used in this attack")
         # Margin loss: difference between correct class and 2nd best class
         preds_correct_class = (logits * y).sum(1, keepdims=True)
         diff = preds_correct_class - logits
@@ -104,6 +105,7 @@ def loss(y, logits, targeted=False, loss_type='margin_loss'):
         loss_val = margin * -1 if targeted else margin
         
     elif loss_type == 'cross_entropy':
+        # print("Cross Entropy loss is used in this attack")
         # Cross-entropy loss
         probs = softmax(logits)
         # Get probability of true class

@@ -4,7 +4,7 @@ from . import square_attack_utils
 import utils
 import time
 
-def SquareAttackLinf_Wrapper(model, device, dataLoader, eps=0.05, n_iters=1000, p_init=0.05, n_classes=2, targeted=False):
+def SquareAttackLinf_Wrapper(model, device, dataLoader, eps=0.05, n_iters=1000, p_init=0.05, n_classes=2, targeted=False, loss_type="cross_entropy"):
     # Collect all original examples and labels
     x_tensor, y_tensor = utils.DataLoaderToTensor(dataLoader)
     print("x_tensor: ", x_tensor.shape)
@@ -13,7 +13,7 @@ def SquareAttackLinf_Wrapper(model, device, dataLoader, eps=0.05, n_iters=1000, 
     # Convert true labels to one-hot
     y_onehot = square_attack_utils.dense_to_onehot(all_labels, n_classes)
 
-    # ========== Generate target labels for targeted attack ==========
+    # Generate target labels for targeted attack
     if targeted:
         # Create target labels (any class except the true class)
         y_target = np.zeros_like(all_labels)
@@ -26,13 +26,10 @@ def SquareAttackLinf_Wrapper(model, device, dataLoader, eps=0.05, n_iters=1000, 
         print(f"Target labels (first 10): {y_target[:10]}")
     else:
         y_target_onehot = y_onehot  # For untargeted, use true labels
-    # ========== END ==========
 
     # All samples are correctly classified (already filtered in main.py)
     corr_classified = np.ones(len(all_labels), dtype=bool)
 
-    # Determine loss type based on targeted flag
-    loss_type = "margin_loss" if not targeted else "cross_entropy"
     print(f"Attack mode: {'Targeted' if targeted else 'Untargeted'}, Loss type: {loss_type}")
     
     # Run attack

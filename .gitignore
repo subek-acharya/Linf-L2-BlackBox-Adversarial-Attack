@@ -2,6 +2,17 @@
 checkpoint/*
 !checkpoint/.gitkeep
 
+# Data Files
+data/*
+!data/.gitkeep
+
+# Adversarial Samples
+adv_samples/*
+!adv_samples/.gitkeep
+
+# Results
+results/
+
 # Python
 __pycache__/
 *.py[cod]
@@ -50,12 +61,3 @@ Thumbs.db
 
 # Logs
 *.log
-# Data Files
-data/*
-!data/.gitkeep
-
-# Logs
-*.log
-# Data Files
-data/*
-!data/.gitkeep
