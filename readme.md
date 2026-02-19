@@ -234,7 +234,8 @@ DEFAULT_SURFREE_CONFIG = {
 ```
 
 ### 🔧 Configuration
-Adding New Models
+
+#### Adding New Models
 Use the ModelFactory class to load models:
 ```bash
 from ModelFactory import ModelFactory
@@ -251,7 +252,7 @@ model = factory.get_model("cait", "checkpoint/cait_model.th")
 model = factory.get_model("svm", ["checkpoint/base.pth", "checkpoint/multi.pth"])
 ```
 
-### Configuring Experiments
+#### Configuring Experiments
 Edit constants.py to define experiment configurations:
 ```bash
 EXPERIMENTS = {
