@@ -148,7 +148,7 @@ Square Attack for all models and epsilon values
 ### Running Individual Attacks
 
 #### RayS Attack
-```bash
+```python
 from RaysAttackExperiment import RaysAttackExperiment
 from constants import EXPERIMENTS
 
