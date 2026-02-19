@@ -279,11 +279,15 @@ cait_eps=8/255                : 0.5120
 svm_eps=8/255                 : 0.2340
 ```
 
+```makefile
 Adversarial samples are saved to adv_samples/{attack_name}/{model_name}/.
+```
 
 ### 📖 References
 
+```makefile
 - RayS: Chen, J., & Gu, Q. (2020). "RayS: A Ray Searching Method for Hard-label Adversarial Attack"
 - ADBA: Based on adaptive direction-based black-box attack methodology
 - Square Attack: Andriushchenko, M., et al. (2020). "Square Attack: a query-efficient black-box adversarial attack via random search"
 - SurFree: Maho, T., et al. (2021). "SurFree: a fast surrogate-free black-box attack"
+```
