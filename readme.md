@@ -136,7 +136,7 @@ pip install -r requirements.txt
 
 ### Running All Attacks
 Execute the main script to run all L∞ attacks across multiple epsilon values:
-```bash
+```python
 python main.py
 ```
 This will sequentially run:
@@ -163,7 +163,7 @@ experiment.run_all()
 ```
 
 #### ADBA Attack
-```bash
+```python
 from ADBAAttackExperiment import ADBAAttackExperiment
 from constants import EXPERIMENTS
 
@@ -178,7 +178,7 @@ experiment.run_all()
 ```
 
 #### Square Attack (L∞)
-```bash
+```python
 from SquareAttackLinfExperiment import SquareAttackLinfExperiment
 from constants import EXPERIMENTS
 
@@ -194,7 +194,7 @@ experiment.run_all()
 ```
 
 #### SurFree Attack (L2)
-```bash
+```python
 from SurfreeAttackExperiment import SurfreeAttackExperiment, DEFAULT_SURFREE_CONFIG
 from constants import EXPERIMENTS
 
@@ -208,14 +208,14 @@ experiment.run_all()
 
 ### Attack Parameters
 L∞ Attacks (RayS, ADBA, Square)
-```bash
+```python
 epsilon = [255/255, 64/255, 32/255, 16/255, 8/255, 4/255]  # Perturbation budgets
 query_limit = 10000      # Maximum queries per sample
 total_samples = 1000     # Number of samples to attack
 ```
 
 L2 Attack (SurFree)
-```bash
+```python
 DEFAULT_SURFREE_CONFIG = {
     "init": {
         "steps": 100,              # Optimization steps
@@ -237,7 +237,7 @@ DEFAULT_SURFREE_CONFIG = {
 
 #### Adding New Models
 Use the ModelFactory class to load models:
-```bash
+```python
 from ModelFactory import ModelFactory
 
 factory = ModelFactory()
@@ -254,7 +254,7 @@ model = factory.get_model("svm", ["checkpoint/base.pth", "checkpoint/multi.pth"]
 
 #### Configuring Experiments
 Edit constants.py to define experiment configurations:
-```bash
+```python
 EXPERIMENTS = {
     "resnet20": {
         "ckpt_path": "checkpoint/ModelResNet20.th",
@@ -282,7 +282,8 @@ svm_eps=8/255                 : 0.2340
 Adversarial samples are saved to adv_samples/{attack_name}/{model_name}/.
 
 ### 📖 References
-RayS: Chen, J., & Gu, Q. (2020). "RayS: A Ray Searching Method for Hard-label Adversarial Attack"
-ADBA: Based on adaptive direction-based black-box attack methodology
-Square Attack: Andriushchenko, M., et al. (2020). "Square Attack: a query-efficient black-box adversarial attack via random search"
-SurFree: Maho, T., et al. (2021). "SurFree: a fast surrogate-free black-box attack"
+
+- RayS: Chen, J., & Gu, Q. (2020). "RayS: A Ray Searching Method for Hard-label Adversarial Attack"
+- ADBA: Based on adaptive direction-based black-box attack methodology
+- Square Attack: Andriushchenko, M., et al. (2020). "Square Attack: a query-efficient black-box adversarial attack via random search"
+- SurFree: Maho, T., et al. (2021). "SurFree: a fast surrogate-free black-box attack"
