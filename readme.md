@@ -79,7 +79,7 @@ Surrogate-free decision-based attack optimizing L2 distance. Features:
 ## 📁 Project Structure
 
 ```bash
-Linf-BlackBoxAttack/
+Linf-L2-BlackBoxAttack/
 │
 ├── model_architecture/           # Model implementations
 │   ├── ResNet.py                # ResNet-20 architecture
