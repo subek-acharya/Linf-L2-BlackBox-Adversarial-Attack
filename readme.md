@@ -2,13 +2,13 @@
 
 A comprehensive PyTorch implementation for evaluating the robustness of deep learning models using L∞-norm and L2-norm constrained black-box adversarial attacks.
 
-## 🔍 Overview
+## Overview
 
 This project implements four black-box adversarial attacks designed to evaluate model robustness without requiring access to model gradients or internal parameters. The framework supports multiple model architectures and provides a unified interface for running experiments across different attack methods and perturbation budgets.
 
 **Attack Type:** Black-Box (query-based access only — no gradient information required)
 
-## 📚 What is a Black-Box Attack?
+## What is a Black-Box Attack?
 
 A black-box adversarial attack assumes the attacker has **no knowledge** of the target model's internals:
 - No access to model architecture or parameters
@@ -18,7 +18,7 @@ A black-box adversarial attack assumes the attacker has **no knowledge** of the 
 
 This is a more realistic threat model that reflects real-world attack scenarios where models are deployed as APIs or services.
 
-## ⚔️ Attack Methods
+## Attack Methods
 
 ### 1. **RayS Attack (L∞)**
 A query-efficient hard-label black-box attack that searches along rays from the original sample. Features:
@@ -67,7 +67,7 @@ Surrogate-free decision-based attack optimizing L2 distance. Features:
 - `theta_max`: Maximum angle for direction search (degrees)
 - `n_ortho`: Number of orthogonal directions to maintain
 
-## 🎯 Supported Models
+## Supported Models
 
 | Model | Architecture | Description |
 |-------|-------------|-------------|
@@ -76,7 +76,7 @@ Surrogate-free decision-based attack optimizing L2 distance. Features:
 | **CaiT** | Transformer | Class-Attention in Image Transformers |
 | **MultiOutputSVM** | Classical ML | SVM with PyTorch-compatible interface |
 
-## 📁 Project Structure
+## Project Structure
 
 ```bash
 Linf-L2-BlackBoxAttack/
@@ -106,33 +106,7 @@ Linf-L2-BlackBoxAttack/
 └── README.md                     # This file
 ```
 
-## 🚀 Setup
-
-### Prerequisites
-- Python 3.8 or higher
-- CUDA-capable GPU (recommended)
-- 8GB+ RAM
-
-### Installation
-
-1. Clone the repository:
-```bash
-git clone https://github.com/subek-acharya/L0-WhiteBox-Adversarial-Attack.git
-cd L0-WhiteBox-Adversarial-Attack
-```
-
-2. Create a virtual environment:
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-3. Install required packages:
-```bash
-pip install -r requirements.txt
-```
-
-## 🎮 Usage
+## Usage
 
 ### Running All Attacks
 Execute the main script to run all L∞ attacks across multiple epsilon values:
@@ -148,98 +122,31 @@ Square Attack for all models and epsilon values
 ### Running Individual Attacks
 
 #### RayS Attack
-```python
-from RaysAttackExperiment import RaysAttackExperiment
-from constants import EXPERIMENTS
-
-epsilon = 8/255  # L∞ bound
-experiment = RaysAttackExperiment(
-    experiments_config=EXPERIMENTS,
-    epsilon_max=epsilon,
-    query_limit=10000,
-    total_samples=1000
-)
-experiment.run_all()
+```bash
+python RaysAttackExperiment.py
 ```
 
 #### ADBA Attack
-```python
-from ADBAAttackExperiment import ADBAAttackExperiment
-from constants import EXPERIMENTS
-
-epsilon = 8/255
-experiment = ADBAAttackExperiment(
-    experiments_config=EXPERIMENTS,
-    epsilon_max=epsilon,
-    query_limit=10000,
-    total_samples=1000
-)
-experiment.run_all()
+```bash
+python ADBAAttackExperiment.py
 ```
 
 #### Square Attack (L∞)
-```python
-from SquareAttackLinfExperiment import SquareAttackLinfExperiment
-from constants import EXPERIMENTS
-
-epsilon = 8/255
-experiment = SquareAttackLinfExperiment(
-    experiments_config=EXPERIMENTS,
-    epsilon_max=epsilon,
-    n_iters=40000,
-    p_init=0.8,
-    total_samples=1000
-)
-experiment.run_all()
+```bash
+python SquareAttackLinfExperiment.py
 ```
 
 #### SurFree Attack (L2)
-```python
-from SurfreeAttackExperiment import SurfreeAttackExperiment, DEFAULT_SURFREE_CONFIG
-from constants import EXPERIMENTS
-
-experiment = SurfreeAttackExperiment(
-    experiments_config=EXPERIMENTS,
-    surfree_config=DEFAULT_SURFREE_CONFIG,
-    total_samples=1000
-)
-experiment.run_all()
+```bash
+python SurfreeAttackExperiment.py
 ```
 
-### Attack Parameters
-L∞ Attacks (RayS, ADBA, Square)
-```python
-epsilon = [255/255, 64/255, 32/255, 16/255, 8/255, 4/255]  # Perturbation budgets
-query_limit = 10000      # Maximum queries per sample
-total_samples = 1000     # Number of samples to attack
-```
-
-L2 Attack (SurFree)
-```python
-DEFAULT_SURFREE_CONFIG = {
-    "init": {
-        "steps": 100,              # Optimization steps
-        "max_queries": 10000,      # Max queries per image
-        "theta_max": 30,           # Max search angle (degrees)
-        "n_ortho": 100,            # Orthogonal directions
-        "BS_gamma": 0.001,         # Binary search precision
-    },
-    "run": {
-        "basis_params": {
-            "basis_type": "random",  # "dct" or "random"
-            "random_noise": "normal" # Noise distribution
-        }
-    }
-}
-```
-
-### 🔧 Configuration
+### Configuration
 
 #### Adding New Models
 Use the ModelFactory class to load models:
 ```python
 from ModelFactory import ModelFactory
-
 factory = ModelFactory()
 
 # Load ResNet
@@ -268,7 +175,7 @@ EXPERIMENTS = {
 }
 ```
 
-### 📊 Output
+### Output
 Results are saved to text files with robust accuracy for each model and epsilon value:
 
 ```makefile
@@ -283,7 +190,7 @@ svm_eps=8/255                 : 0.2340
 Adversarial samples are saved to adv_samples/{attack_name}/{model_name}/.
 ```
 
-### 📖 References
+### References
 
 - RayS: Chen, J., & Gu, Q. (2020). "RayS: A Ray Searching Method for Hard-label Adversarial Attack"
 - ADBA: Based on adaptive direction-based black-box attack methodology
