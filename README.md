@@ -82,7 +82,7 @@ For L2 attack (Surfree):
 L2 distance thresholds = [1, 2, 3, 5, 15, 45]
 ```
 
-# Supported Models
+## Supported Models
 
 | # | Model | Architecture | Type |
 |---|-------|--------------|------|
@@ -227,8 +227,6 @@ EXPERIMENTS_UNET_ALL = {
 Results are saved to text files
 Adversarial samples are saved to adv_samples/{attack_name}/{model_name}/.
 ```
-
-### References
 
 ## References
 
