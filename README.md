@@ -154,16 +154,10 @@ Linf-L2-BlackBoxAttack/
 ## Usage
 
 ### Running All Attacks
-Execute the main script to run all L∞ attacks across multiple epsilon values:
+Execute the main script to run all L∞/L2 attacks across multiple epsilon values on single run
 ```python
 python main.py
 ```
-This will sequentially run:
-
-RayS Attack for all models and epsilon values
-ADBA Attack for all models and epsilon values
-Square Attack for all models and epsilon values
-SurFree Attack (L2) for all models
 
 ### Running Individual Attacks
 
