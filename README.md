@@ -15,7 +15,7 @@ This project implements four black-box adversarial attacks designed to evaluate 
 - Uses original validation data for attack
 - Evaluates model robustness without defense
 
-## Mode 2: UNet + Model
+### Mode 2: UNet + Model
 - Scanned Bubble Samples → UNet (Denoiser) → Model → Prediction
 - Uses scanned bubble data (post print-scan process)
 - Evaluates combined UNet defense + model robustness
@@ -70,7 +70,7 @@ Surrogate-free decision-based attack optimizing L2 distance. Features:
 - `theta_max`: Maximum angle for direction search (degrees)
 - `n_ortho`: Number of orthogonal directions to maintain
 
-## Epsilon Values Tested
+### Epsilon Values Tested
 
 For L∞ attacks (RayS, ADBA, Square):
 ```text
