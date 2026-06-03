@@ -6,7 +6,7 @@ A comprehensive PyTorch implementation for evaluating the robustness of deep lea
 
 This project implements four black-box adversarial attacks designed to evaluate model robustness without requiring access to model gradients or internal parameters. The framework supports 9 model architectures and provides a unified interface for running experiments across different attack methods, perturbation budgets, and defense configurations.
 
-**Attack Type:** Black-Box (query-based access only — no gradient information required)
+**Attack Type:** Black-Box (query-based access only; no gradient information required)
 
 ## Evaluation Mode
 
