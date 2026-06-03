@@ -1,7 +1,7 @@
 import os
 import torch
 from torch.utils.data import DataLoader, TensorDataset
-from constants import EXPERIMENTS_ALL
+from constants import EXPERIMENTS_UNET_RESNET20, UNET_CHECKPOINT
 import adba_attack
 import utils
 from ModelFactory import ModelFactory
@@ -221,7 +221,7 @@ def main():
     
     for eps in epsilon:
         experiment = ADBAAttackExperiment(
-            experiments_config=EXPERIMENTS_ALL,
+            experiments_config=EXPERIMENTS_UNET_RESNET20,
             epsilon_max=eps,
         )
         experiment.run_all()

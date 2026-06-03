@@ -1,88 +1,53 @@
 import os
 import torch
 from torch.utils.data import DataLoader, TensorDataset
-from constants import EXPERIMENTS_ALL
-import adba_attack
+from constants import EXPERIMENTS_UNET_ALL, UNET_CHECKPOINT
+from rays_attack import RaySAttack
 import utils
 from ModelFactory import ModelFactory
 
 
-class ADBAAttackExperiment:
+class RaysAttackExperiment:
     def __init__(
-        self,
-        experiments_config,
-        epsilon_max,
-        query_limit=10000,
-        total_samples=500,
-        init_dir=1,
-        offspring_n=2,
-        binary_mode=0,
-        channels=1,
-        n_classes=2,
+        self, experiments_config, epsilon_max, query_limit=10000, total_samples=500, n_classes=2,
     ):
         self.experiments = experiments_config
         self.epsilon_max = epsilon_max
         self.query_limit = query_limit
         self.total_samples = total_samples
-        self.init_dir = init_dir              # Initial direction: 0=random, 1=all +1, -1=all -1
-        self.offspring_n = offspring_n        # Number of offspring directions
-        self.binary_mode = binary_mode        # Binary search mode: 0=midpoint, 1=median-based
-        self.channels = channels              # Grayscale images channel = 1
         self.n_classes = n_classes
         self.results = {}
         self.headers_written = set()
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.factory = ModelFactory(device=self.device)
 
-    def _get_adba_config(self):
-        """Build ADBA configuration dictionary."""
-        return {
-            "epsilon": self.epsilon_max,
-            "budget": self.query_limit,
-            "init_dir": self.init_dir,
-            "offspring_n": self.offspring_n,
-            "binary_mode": self.binary_mode,
-            "channels": self.channels,
-        }
-
     def run_all(self, batch_size=64):
         for model_name, config in self.experiments.items():
-            # Check if UNet should be used
             use_unet = config.get("use_unet", False)
             unet_ckpt = config.get("unet_ckpt", UNET_CHECKPOINT) if use_unet else None
-            
             mode_str = "UNet + Model" if use_unet else "Model Only"
-            
-            print(f"\n{'=' * 70}")
-            print(f"Model: {model_name} ({mode_str})")
-            print(f"Dataset: {config['dataset_path']}")
-            print(f"Epsilon: {self.epsilon_max}")
-            print(f"Query Limit: {self.query_limit}")
-            print(f"Total Samples: {self.total_samples}")
-            print(f"{'=' * 70}")
 
-            # Load attack model (UNet+Model or Model only)
-            attack_model = self._load_model(model_name, config, use_unet, unet_ckpt)
+            print(
+                f"Model: {model_name} ({mode_str}), Dataset: {config['dataset_path']}, Epsilon Max: {self.epsilon_max}, Query Limit: {self.query_limit}, Total Samples: {self.total_samples}"
+            )
 
-            # Get clean loader using attack_model for sample selection
-            loader = self._get_clean_loader(config["dataset_path"], attack_model, batch_size)
+            model = self._load_model(model_name, config, use_unet, unet_ckpt)
+
+            loader = self._get_clean_loader(config["dataset_path"], model, batch_size)
             if not loader:
                 continue
 
-            # Execute attack on the same model used for sample selection
-            adv_loader, acc = self._execute_attack(attack_model, loader)
+            adv_loader, acc = self._execute_attack(model, loader)
             
-            # Create result key
             unet_suffix = "_unet" if use_unet else ""
             result_key = f"{model_name}{unet_suffix}_eps={int(self.epsilon_max * 255)}/255"
             self.results[result_key] = acc
 
-            # Save results
             self._append_result(result_key, acc, use_unet)
 
             if adv_loader:
                 self._save_samples(
-                    adv_loader, model_name, config["dataset_path"], use_unet
+                    adv_loader, model, model_name, config["dataset_path"], use_unet
                 )
 
     def _load_model(self, model_name, config, use_unet, unet_ckpt):
@@ -102,11 +67,8 @@ class ADBAAttackExperiment:
 
     def _execute_attack(self, model, loader):
         try:
-            adv_loader = adba_attack.ADBA_AttackWrapper(
-                model=model,
-                device=self.device,
-                dataLoader=loader,
-                config=self._get_adba_config(),
+            adv_loader = RaySAttack(
+                self.device, model, self.epsilon_max, self.query_limit, loader
             )
             acc = utils.validateD(adv_loader, model, self.device)
             print(f"Robust Accuracy (eps={self.epsilon_max}): {acc:.8f}")
@@ -118,22 +80,14 @@ class ADBAAttackExperiment:
             return None, None
 
     def _get_clean_loader(self, dataset_path, model, batch_size):
-        """
-        Get correctly classified samples using the provided model.
-        
-        When model is UNet+Model wrapper, samples are selected based on
-        UNet+Model's predictions (i.e., samples that UNet+Model correctly classifies).
-        """
         try:
             data = torch.load(dataset_path, weights_only=False)
             
             # Handle different data formats (scanned vs original)
             if "xData" in data:
-                # Scanned bubble format
                 images = data["xData"].float()
                 labels = data["yDataBinary"].long()
             elif "data" in data:
-                # Original format
                 images = data["data"].float()
                 labels = data["binary_labels"].long()
             else:
@@ -142,7 +96,6 @@ class ADBAAttackExperiment:
             dataset = TensorDataset(images, labels)
             raw_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
 
-            # Use the provided model (could be UNet+Model or Model only)
             return utils.GetCorrectlyIdentifiedSamplesBalanced(
                 model, self.total_samples, raw_loader, numClasses=self.n_classes
             )
@@ -152,11 +105,9 @@ class ADBAAttackExperiment:
             traceback.print_exc()
             return None
 
-    def _save_samples(self, adv_loader, model_name, dataset_path, use_unet, n_save=500):
-        """Save adversarial samples in standardized format."""
-        # Create directory based on mode
+    def _save_samples(self, adv_loader, model, model_name, dataset_path, use_unet, n_save=500):
         unet_suffix = "_unet" if use_unet else ""
-        base_dir = os.path.join("adv_samples", f"adba{unet_suffix}", model_name)
+        base_dir = os.path.join("adv_samples", f"rays{unet_suffix}", model_name)
         os.makedirs(base_dir, exist_ok=True)
 
         clean_name = (
@@ -167,14 +118,10 @@ class ADBAAttackExperiment:
         )
         save_path = os.path.join(base_dir, filename)
 
-        # Convert dataloader to tensors using utils
         x_adv, y_clean = utils.DataLoaderToTensor(adv_loader)
-        
-        # Limit to n_save samples
         x_adv = x_adv[:n_save]
         y_clean = y_clean[:n_save]
 
-        # Save in target format
         output_data = {
             "data": x_adv.float(),
             "binary_labels": y_clean.long(),
@@ -182,17 +129,11 @@ class ADBAAttackExperiment:
         }
         
         torch.save(output_data, save_path)
-        
-        print(f"\n{'─' * 60}")
-        print(f"Saved {len(x_adv)} samples to {save_path}")
-        print(f"  data shape: {output_data['data'].shape}")
-        print(f"  binary_labels: {torch.bincount(output_data['binary_labels']).tolist()}")
-        print(f"{'─' * 60}")
+        print(f"Saved {n_save} samples to {save_path}")
 
     def _append_result(self, result_key, acc, use_unet, filepath=None):
-        """Append result to file."""
         if filepath is None:
-            filepath = "adba_unet_results.txt" if use_unet else "adba_results.txt"
+            filepath = "rays_unet_results.txt" if use_unet else "rays_results.txt"
         
         eps_key = int(self.epsilon_max * 255)
         mode_str = "(UNet+Model)" if use_unet else ""
@@ -203,7 +144,7 @@ class ADBAAttackExperiment:
                 f.write(
                     "\n"
                     + "=" * 10
-                    + f" ADBA ATTACK {mode_str} FINAL RESULTS eps={eps_key}/255 "
+                    + f" RAYS ATTACK {mode_str} FINAL RESULTS eps={eps_key}/255 "
                     + "=" * 10
                     + "\n"
                 )
@@ -218,10 +159,9 @@ class ADBAAttackExperiment:
 def main():
     epsilon = [255 / 255, 16 / 255, 8 / 255, 4 / 255]
     # epsilon = [4 / 255]
-    
     for eps in epsilon:
-        experiment = ADBAAttackExperiment(
-            experiments_config=EXPERIMENTS_ALL,
+        experiment = RaysAttackExperiment(
+            experiments_config=EXPERIMENTS_UNET_ALL,
             epsilon_max=eps,
         )
         experiment.run_all()

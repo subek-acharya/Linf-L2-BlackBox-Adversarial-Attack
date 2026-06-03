@@ -1,7 +1,7 @@
 import os
 import torch
 from torch.utils.data import DataLoader, TensorDataset
-from constants import EXPERIMENTS_ALL
+from constants import EXPERIMENTS_UNET_ALL, UNET_CHECKPOINT
 from surfree_attack import SurFree_AttackWrapper
 import utils
 from ModelFactory import ModelFactory
@@ -257,7 +257,7 @@ DEFAULT_SURFREE_CONFIG = {
 def main():
     # L2 distance thresholds = [1, 2, 3, 5, 15, 45]
     experiment = SurfreeAttackExperiment(
-        experiments_config=EXPERIMENTS_ALL,
+        experiments_config=EXPERIMENTS_UNET_ALL,
         surfree_config=DEFAULT_SURFREE_CONFIG,
         total_samples=500
     )

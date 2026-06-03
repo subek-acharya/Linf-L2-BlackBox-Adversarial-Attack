@@ -60,7 +60,7 @@ def SquareAttackLinf_Wrapper(model, device, dataLoader, eps=0.05, n_iters=1000, 
 
 def square_attack_linf(model, device, x, y, corr_classified, eps, n_iters, p_init, targeted, loss_type):
     """ The Linf square attack """
-    np.random.seed(0)  # important to leave it here as well
+    np.random.seed(0)  
     min_val, max_val = 0, 1 if x.max() <= 1 else 255
     c, h, w = x.shape[1:]
     n_features = c*h*w
@@ -69,6 +69,7 @@ def square_attack_linf(model, device, x, y, corr_classified, eps, n_iters, p_ini
 
     # [c, 1, w], i.e. vertical stripes work best for untargeted attacks
     init_delta = np.random.choice([-eps, eps], size=[x.shape[0], c, 1, w])
+    
     # x_best = np.clip(x + init_delta, min_val, max_val)
     x_best = np.clip(square_attack_utils.quantize_numpy(x + init_delta), min_val, max_val) # quantization applied
 

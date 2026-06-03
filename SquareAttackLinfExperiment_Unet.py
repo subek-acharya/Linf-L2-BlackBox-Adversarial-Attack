@@ -1,49 +1,36 @@
 import os
 import torch
 from torch.utils.data import DataLoader, TensorDataset
-from constants import EXPERIMENTS_ALL
-import adba_attack
+from constants import EXPERIMENTS_UNET_ALL, UNET_CHECKPOINT
+import square_attack
 import utils
 from ModelFactory import ModelFactory
 
 
-class ADBAAttackExperiment:
+class SquareAttackLinfExperiment:
     def __init__(
         self,
         experiments_config,
         epsilon_max,
-        query_limit=10000,
-        total_samples=500,
-        init_dir=1,
-        offspring_n=2,
-        binary_mode=0,
-        channels=1,
+        n_iters=60000,
+        p_init=0.8,
         n_classes=2,
+        targeted=False,
+        loss_type="cross_entropy",
+        total_samples=500,
     ):
         self.experiments = experiments_config
         self.epsilon_max = epsilon_max
-        self.query_limit = query_limit
-        self.total_samples = total_samples
-        self.init_dir = init_dir              # Initial direction: 0=random, 1=all +1, -1=all -1
-        self.offspring_n = offspring_n        # Number of offspring directions
-        self.binary_mode = binary_mode        # Binary search mode: 0=midpoint, 1=median-based
-        self.channels = channels              # Grayscale images channel = 1
+        self.n_iters = n_iters
+        self.p_init = p_init
         self.n_classes = n_classes
+        self.targeted = targeted
+        self.loss_type = loss_type
+        self.total_samples = total_samples
         self.results = {}
         self.headers_written = set()
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.factory = ModelFactory(device=self.device)
-
-    def _get_adba_config(self):
-        """Build ADBA configuration dictionary."""
-        return {
-            "epsilon": self.epsilon_max,
-            "budget": self.query_limit,
-            "init_dir": self.init_dir,
-            "offspring_n": self.offspring_n,
-            "binary_mode": self.binary_mode,
-            "channels": self.channels,
-        }
 
     def run_all(self, batch_size=64):
         for model_name, config in self.experiments.items():
@@ -57,7 +44,7 @@ class ADBAAttackExperiment:
             print(f"Model: {model_name} ({mode_str})")
             print(f"Dataset: {config['dataset_path']}")
             print(f"Epsilon: {self.epsilon_max}")
-            print(f"Query Limit: {self.query_limit}")
+            print(f"N_Iters: {self.n_iters}")
             print(f"Total Samples: {self.total_samples}")
             print(f"{'=' * 70}")
 
@@ -102,11 +89,16 @@ class ADBAAttackExperiment:
 
     def _execute_attack(self, model, loader):
         try:
-            adv_loader = adba_attack.ADBA_AttackWrapper(
+            adv_loader = square_attack.SquareAttackLinf_Wrapper(
                 model=model,
                 device=self.device,
                 dataLoader=loader,
-                config=self._get_adba_config(),
+                eps=self.epsilon_max,
+                n_iters=self.n_iters,
+                p_init=self.p_init,
+                n_classes=self.n_classes,
+                targeted=self.targeted,
+                loss_type=self.loss_type,
             )
             acc = utils.validateD(adv_loader, model, self.device)
             print(f"Robust Accuracy (eps={self.epsilon_max}): {acc:.8f}")
@@ -156,7 +148,7 @@ class ADBAAttackExperiment:
         """Save adversarial samples in standardized format."""
         # Create directory based on mode
         unet_suffix = "_unet" if use_unet else ""
-        base_dir = os.path.join("adv_samples", f"adba{unet_suffix}", model_name)
+        base_dir = os.path.join("adv_samples", f"square_linf{unet_suffix}", model_name)
         os.makedirs(base_dir, exist_ok=True)
 
         clean_name = (
@@ -192,7 +184,7 @@ class ADBAAttackExperiment:
     def _append_result(self, result_key, acc, use_unet, filepath=None):
         """Append result to file."""
         if filepath is None:
-            filepath = "adba_unet_results.txt" if use_unet else "adba_results.txt"
+            filepath = "square_unet_results.txt" if use_unet else "square_results.txt"
         
         eps_key = int(self.epsilon_max * 255)
         mode_str = "(UNet+Model)" if use_unet else ""
@@ -203,7 +195,7 @@ class ADBAAttackExperiment:
                 f.write(
                     "\n"
                     + "=" * 10
-                    + f" ADBA ATTACK {mode_str} FINAL RESULTS eps={eps_key}/255 "
+                    + f" SQUARE ATTACK LINF {mode_str} FINAL RESULTS eps={eps_key}/255 "
                     + "=" * 10
                     + "\n"
                 )
@@ -214,14 +206,13 @@ class ADBAAttackExperiment:
             else:
                 f.write(f"{result_key:<40}: Failed\n")
 
-
 def main():
     epsilon = [255 / 255, 16 / 255, 8 / 255, 4 / 255]
     # epsilon = [4 / 255]
     
     for eps in epsilon:
-        experiment = ADBAAttackExperiment(
-            experiments_config=EXPERIMENTS_ALL,
+        experiment = SquareAttackLinfExperiment(
+            experiments_config=EXPERIMENTS_UNET_ALL,
             epsilon_max=eps,
         )
         experiment.run_all()
